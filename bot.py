@@ -108,6 +108,7 @@ class AutoReport:
     async def objectives_collect(self):
         if DEBUG:
             print('objective_collect start')
+        await self.report_retreating(self.cache.retreating_systems)
         await self.report_active(self.cache.conflicts_active)
         await self.report_pending(self.cache.conflicts_pending)
         await self.report_recovering(self.cache.conflicts_recovering)
@@ -122,7 +123,13 @@ class AutoReport:
             report += f'{self.comment}\n\n'
         for num, objective_active in enumerate(self.objectives):
             objective = self.objectives[objective_active]
-            if objective.status == 'active':
+            if objective.status == 'active' and objective.state == 'retreat' :
+                if DEBUG :
+                    print(f'retreating_systems_text for {objective_active} start')
+                report += await objective.retreating_systems_text(num+1, objective_active)
+                if DEBUG :
+                    print(f'retreating_systems_text for {objective_active} done')
+            elif objective.status == 'active':
                 if DEBUG:
                     print(f'conflict_active_text for {objective_active} start')
                 report += await objective.conflict_active_text(num + 1, objective_active)
@@ -136,7 +143,13 @@ class AutoReport:
                     print(f'conflict_active_text for event #{num + 1} done')
         for objective_pending in self.objectives:
             objective = self.objectives[objective_pending]
-            if objective.status == 'pending':
+            if objective.status == 'pending' and objective.state=='retreat' :
+                if DEBUG :
+                    print(f'retreating_systems_text for {objective_pending} start')
+                report += await objective.retreating_systems_text(num+1, objective_pending)
+                if DEBUG :
+                    print(f'retreating_systems_text for {objective_pending} done')
+            elif objective.status == 'pending':
                 if DEBUG:
                     print(f'conflict_pending_text for {objective_pending} start')
                 report += await objective.conflict_pending_text(objective_pending)
@@ -144,7 +157,13 @@ class AutoReport:
                     print(f'conflict_pending_text for {objective_pending} done')
         for objective_recovering in self.objectives:
             objective = self.objectives[objective_recovering]
-            if objective.status == 'victory' or objective.status == 'defeat':
+            if objective.status=="recovering" and objective.state=="retreat" :
+                if DEBUG :
+                    print(f'retreating_systems_text for {objective_recovering} start')
+                report += await objective.retreating_systems_text(num+1, objective_recovering)
+                if DEBUG :
+                    print(f'retreating_systems_text for {objective_recovering} done')
+            elif objective.status == 'victory' or objective.status == 'defeat':
                 if DEBUG:
                     print(f'conflict_recovering_text for {objective_recovering} start')
                 report += await objective.conflict_recovering_text(objective_recovering)
@@ -154,6 +173,23 @@ class AutoReport:
         await bot.get_channel(CHANNEL_ADMIN).send(report)
         if DEBUG:
             print('report_send done')
+
+    async def report_retreating(self, retreating_systems) : #retreating_systems is my report from eddb_api.py
+        if DEBUG :
+            print('report_retreating start')
+        for old_objective in self.objectives :
+            if ( old_objective not in retreating_systems ): #if the old objective matches one of the ones that exists now
+                self.objectives.pop(old_objective) #remove it
+        for retreating_system in retreating_systems : #for every current retreating system
+            if (retreating_system not in old_objective) : #if it doesn't already exist
+                self.objectives[retreating_system] = Objective()
+                objective = self.objectives[retreating_system]
+                objective.status = retreating_systems[retreating_system]["status"]
+                objective.state = 'retreat'
+                objective.influence = retreating_systems[retreating_system]["influence"]
+                objective.updated_ago = retreating_systems[retreating_system]["updated_ago"]
+        if DEBUG :
+            print('report_retresting done')
 
     async def report_active(self, conflicts_active):
         if DEBUG:
@@ -270,6 +306,12 @@ class Objective:
         self.comment = ''
         self.text = ''
         self.new = []
+        self.influence = ''
+
+    async def retreating_systems_text(self, num, system_name) :
+        text =  '{0} {1} in **{2}**\n> Influence: {3}'.format(number_emoji[num], self.state.capitalize(), system_name, self.influence)
+        text += f'Updated {self.updated_ago}.\n\n'
+        return text
 
     async def conflict_active_text(self, num, system_name):
         text = '{0} {1} in **{2}**\n' \
